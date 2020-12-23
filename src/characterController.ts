@@ -43,6 +43,16 @@ export class Player extends TransformNode {
     private _grounded: boolean;
     private _jumpCount: number = 1;
 
+    //player variables
+    public lanternsLit: number = 1; //num lanterns lit
+    public totalLanterns: number;
+    public win: boolean = false; //whether the game is won
+
+
+    //sparkler
+    public sparkler: ParticleSystem; // sparkler particle system
+    public sparkLit: boolean = true;
+    public sparkReset: boolean = false;
 
     constructor(assets, scene: Scene, shadowGenerator: ShadowGenerator, input?) {
         super("player", scene);
@@ -51,8 +61,38 @@ export class Player extends TransformNode {
         this.mesh = assets.mesh;
         this.mesh.parent = this;
 
-        
-        this.scene.getLightByName("sparklight").parent = this.scene.getTransformNodeByName("Empty");
+        //--COLLISIONS--
+        this.mesh.actionManager = new ActionManager(this.scene);
+         //Platform destination
+         this.mesh.actionManager.registerAction(
+            new ExecuteCodeAction(
+                {
+                    trigger: ActionManager.OnIntersectionEnterTrigger,
+                    parameter: this.scene.getMeshByName("destination")
+                },
+                () => {
+                    if(this.lanternsLit == 22){
+                        this.win = true;
+                        //tilt camera to look at where the fireworks will be displayed
+                        this._yTilt.rotation = new Vector3(5.689773361501514, 0.23736477827122882, 0);
+                        this._yTilt.position = new Vector3(0, 6, 0);
+                        this.camera.position.y = 17;      
+                    }
+                }
+            )
+        );
+        //World ground detection
+        //if player falls through "world", reset the position to the last safe grounded position
+        this.mesh.actionManager.registerAction(
+            new ExecuteCodeAction({
+                trigger: ActionManager.OnIntersectionEnterTrigger,
+                parameter: this.scene.getMeshByName("ground")
+            },
+                () => {
+                    this.mesh.position.copyFrom(this._lastGroundPos); // need to use copy or else they will be both pointing at the same thing & update together
+                }
+            )
+        );
         shadowGenerator.addShadowCaster(assets.mesh); //the player mesh will cast shadows
         this._input = input; //inputs we will get from inputController.ts
 
@@ -65,7 +105,7 @@ export class Player extends TransformNode {
         this._h = this._input.horizontal; //x-axis
         this._v = this._input.vertical; //z-axis
 
-        if (this._input.dashing && !this._dashPressed && this._canDash && !this._grounded) {
+        if (this._input.dashing && !this._dashPressed && this._canDash /*&& !this._grounded*/) {
             this._canDash = false; //we've started a dash, do not allow another
             this._dashPressed = true; //start the dash sequence
         }
@@ -220,7 +260,7 @@ export class Player extends TransformNode {
             this._grounded = true;
             this._lastGroundPos.copyFrom(this.mesh.position);
 
-            this._jumpCount = 2; //allow for jumping
+            this._jumpCount = 1; //allow for jumping
             //dashing reset
             this._canDash = true; //the ability to dash
             //reset sequence(needed if we collide with the ground BEFORE actually completing the dash duration)

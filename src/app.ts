@@ -1,7 +1,7 @@
 import "@babylonjs/core/Debug/debugLayer";
 import "@babylonjs/inspector";
 import "@babylonjs/loaders/glTF";
-import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Mesh, MeshBuilder, FreeCamera, Color4, StandardMaterial, Color3, PointLight, ShadowGenerator, Quaternion, Matrix, SceneLoader } from "@babylonjs/core";
+import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Mesh, MeshBuilder, FreeCamera, Color4, StandardMaterial, Color3, PointLight, ShadowGenerator, Quaternion, Matrix, SceneLoader, DynamicTexture } from "@babylonjs/core";
 import { AdvancedDynamicTexture, Button, Control } from "@babylonjs/gui";
 import { Environment } from "./environment";
 import { Player } from "./characterController";
@@ -33,37 +33,40 @@ class App {
         // initialize babylon scene and engine
         this._engine = new Engine(this._canvas, true);
         this._scene = new Scene(this._engine);
-
+        var camera2: ArcRotateCamera = new ArcRotateCamera("Camera", Math.PI / 2, Math.PI / 2, 2, Vector3.Zero(), this._scene);
         // hide/show the Inspector
         window.addEventListener("keydown", (ev) => {
             // Shift+Ctrl+Alt+I
             if (ev.shiftKey && ev.ctrlKey && ev.altKey && ev.keyCode === 73) {
                 if (this._scene.debugLayer.isVisible()) {
                     this._scene.debugLayer.hide();
+                    camera2.attachControl(this._canvas, false);
                 } else {
                     this._scene.debugLayer.show();
+                    camera2.attachControl(this._canvas, true);
                 }
             }
         });
 
         // run the main render loop
         this._main();
+        
     }
 
     private _createCanvas(): HTMLCanvasElement {
 
         //Commented out for development
-        // document.documentElement.style["overflow"] = "hidden";
-        // document.documentElement.style.overflow = "hidden";
-        // document.documentElement.style.width = "100%";
-        // document.documentElement.style.height = "100%";
-        // document.documentElement.style.margin = "0";
-        // document.documentElement.style.padding = "0";
-        // document.body.style.overflow = "hidden";
-        // document.body.style.width = "100%";
-        // document.body.style.height = "100%";
-        // document.body.style.margin = "0";
-        // document.body.style.padding = "0";
+        document.documentElement.style["overflow"] = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        document.documentElement.style.width = "100%";
+        document.documentElement.style.height = "100%";
+        document.documentElement.style.margin = "0";
+        document.documentElement.style.padding = "0";
+        document.body.style.overflow = "hidden";
+        document.body.style.width = "100%";
+        document.body.style.height = "100%";
+        document.body.style.margin = "0";
+        document.body.style.padding = "0";
 
         //create the canvas html element and attach it to the webpage
         this._canvas = document.createElement("canvas");
@@ -153,6 +156,17 @@ class App {
          //--GUI--
          const cutScene = AdvancedDynamicTexture.CreateFullscreenUI("cutscene");
 
+
+
+        //--SAMPLE DIALOGUE--
+        const testBtn = Button.CreateSimpleButton("mainmenu", "This is Intro to Game");
+        testBtn.width = 0.2;
+        testBtn.height = "40px";
+        testBtn.color = "white";
+        cutScene.addControl(testBtn);
+
+        var font = "bold 60px Arial";
+        cutScene.drawText("Hello", 100, 100, font, "white", "white", true, true);
         //--PROGRESS DIALOGUE--
         const next = Button.CreateSimpleButton("next", "NEXT");
         next.color = "white";
@@ -164,6 +178,8 @@ class App {
         next.top = "-3%";
         next.left = "-12%";
         cutScene.addControl(next);
+
+
 
         next.onPointerUpObservable.add(() => {
             // this._goToGame();
@@ -187,7 +203,7 @@ class App {
     private async _setUpGame() {
         let scene = new Scene(this._engine);
         this._gamescene = scene;
-    
+        
         //--CREATE ENVIRONMENT--
         const environment = new Environment(scene);
         this._environment = environment;
@@ -249,6 +265,9 @@ class App {
         //Create the player
         this._player = new Player(this.assets, scene, shadowGenerator, this._input);
         const camera = this._player.activatePlayerCamera();
+
+        //set up lantern collision checks
+        this._environment.checkLanterns(this._player);
     }
 
     private async _goToGame(){
@@ -256,7 +275,7 @@ class App {
         this._scene.detachControl();
         let scene = this._gamescene;
         scene.clearColor = new Color4(0.01568627450980392, 0.01568627450980392, 0.20392156862745098); // a color that fit the overall color scheme better
-
+        
         //--GUI--
         const playerUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
         //dont detect any inputs from this ui while the game is loading
@@ -280,7 +299,7 @@ class App {
 
         //--INPUT--
         this._input = new PlayerInput(scene); //detect keyboard/mobile inputs
-
+        //scene.debugLayer.show();
         //primitive character and setting
         await this._initializeGameAsync(scene);
 
