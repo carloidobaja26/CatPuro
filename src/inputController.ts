@@ -1,4 +1,5 @@
 import { Scene, ActionManager, ExecuteCodeAction, Observer, Scalar } from '@babylonjs/core';
+import { Hud } from './ui';
 
 export class PlayerInput {
     public inputMap: any;
@@ -16,7 +17,7 @@ export class PlayerInput {
     public dashing: boolean = false;
 
     //Mobile Input trackers
-    //private _ui: Hud;
+    private _ui: Hud;
     public mobileLeft: boolean;
     public mobileRight: boolean;
     public mobileUp: boolean;
@@ -24,18 +25,31 @@ export class PlayerInput {
     private _mobileJump: boolean;
     private _mobileDash: boolean;
 
-    constructor(scene: Scene) {
-        scene.actionManager = new ActionManager(scene);
+
+    constructor(scene: Scene, ui: Hud) {
+        this._scene = scene;
+        this._ui = ui;
+
+        //scene action manager to detect inputs
+        this._scene.actionManager = new ActionManager(this._scene);
+
         this.inputMap = {};
-        scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyDownTrigger, (evt) => {
+        this._scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyDownTrigger, (evt) => {
             this.inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
         }));
-        scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyUpTrigger, (evt) => {
+        this._scene.actionManager.registerAction(new ExecuteCodeAction(ActionManager.OnKeyUpTrigger, (evt) => {
             this.inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
         }));
+
+        //add to the scene an observable that calls updateFromKeyboard before rendering
         scene.onBeforeRenderObservable.add(() => {
             this._updateFromKeyboard();
         });
+
+        // Set up Mobile Controls if on mobile device
+        if (this._ui.isMobile) {
+            //this._setUpMobile();
+        }
     }
     private _updateFromKeyboard(): void {
         if (this.inputMap["ArrowUp"]) {
