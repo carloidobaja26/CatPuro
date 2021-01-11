@@ -1,8 +1,8 @@
 import "@babylonjs/core/Debug/debugLayer";
 import "@babylonjs/inspector";
 import "@babylonjs/loaders/glTF";
-import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Mesh, MeshBuilder, FreeCamera, Color4, StandardMaterial, Color3, PointLight, ShadowGenerator, Quaternion, Matrix, SceneLoader, DynamicTexture, CubeTexture } from "@babylonjs/core";
-import { AdvancedDynamicTexture, Button, Control, Image, Rectangle } from "@babylonjs/gui";
+import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Mesh, MeshBuilder, FreeCamera, Color4, StandardMaterial, Color3, PointLight, ShadowGenerator, Quaternion, Matrix, SceneLoader, DynamicTexture, CubeTexture, PostProcess, Sound, Effect } from "@babylonjs/core";
+import { AdvancedDynamicTexture, Button, Control, Image, Rectangle, TextBlock, StackPanel } from "@babylonjs/gui";
 import { Environment } from "./environment";
 import { Player } from "./characterController";
 import { PlayerInput } from "./inputController";
@@ -22,10 +22,18 @@ class App {
     private _player: Player;
     private _ui: Hud;
 
+    //Sounds
+    // public sfx: Sound;
+    public game: Sound;
+    public end: Sound;
+
     //Scene - related
     private _state: number = 0;
     private _gamescene: Scene;
     private _cutScene: Scene;
+
+    //post process
+    private _transition: boolean = false;
 
     constructor() {
         this._canvas = this._createCanvas();
@@ -56,17 +64,17 @@ class App {
     private _createCanvas(): HTMLCanvasElement {
 
         //Commented out for development
-        // document.documentElement.style["overflow"] = "hidden";
-        // document.documentElement.style.overflow = "hidden";
-        // document.documentElement.style.width = "100%";
-        // document.documentElement.style.height = "100%";
-        // document.documentElement.style.margin = "0";
-        // document.documentElement.style.padding = "0";
-        // document.body.style.overflow = "hidden";
-        // document.body.style.width = "100%";
-        // document.body.style.height = "100%";
-        // document.body.style.margin = "0";
-        // document.body.style.padding = "0";
+        document.documentElement.style["overflow"] = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        document.documentElement.style.width = "100%";
+        document.documentElement.style.height = "100%";
+        document.documentElement.style.margin = "0";
+        document.documentElement.style.padding = "0";
+        document.body.style.overflow = "hidden";
+        document.body.style.width = "100%";
+        document.body.style.height = "100%";
+        document.body.style.margin = "0";
+        document.body.style.padding = "0";
 
         //create the canvas html element and attach it to the webpage
         this._canvas = document.createElement("canvas");
@@ -96,7 +104,10 @@ class App {
                         this._goToLose();
                         this._ui.stopTimer();
                     }
-
+                    if (this._ui.quit) {
+                        this._goToStart();
+                        this._ui.quit = false;
+                    }
                     this._scene.render();
                     break;
                 case State.LOSE:
@@ -120,9 +131,20 @@ class App {
         let camera = new FreeCamera("camera1", new Vector3(0, 0, 0), scene);
         camera.setTarget(Vector3.Zero());
 
-        //create a fullscreen ui for all of our GUI elements
+        //--SOUNDS--
+        const start = new Sound("startSong", "./sounds/copycat(revised).mp3", scene, function () {
+        }, {
+            volume: 0.25,
+            loop: true,
+            autoplay: true
+        });
+        const sfx = new Sound("selection", "./sounds/vgmenuselect.wav", scene, function () {
+        });
+
+
+        //--GUI--
         const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
-        guiMenu.idealHeight = 720; //fit our fullscreen ui to this height
+        guiMenu.idealHeight = 720;
 
         //background image
         const imageRect = new Rectangle("titleContainer");
@@ -133,19 +155,68 @@ class App {
         const startbg = new Image("startbg", "sprites/start.jpeg");
         imageRect.addControl(startbg);
 
-        //create a simple button
+        const title = new TextBlock("title", "Catpuro");
+        title.resizeToFit = true;
+        title.fontFamily = "Ceviche One";
+        title.fontSize = "64px";
+        title.color = "white";
+        title.resizeToFit = true;
+        title.top = "14px";
+        title.width = 0.8;
+        title.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        imageRect.addControl(title);
+
         const startBtn = Button.CreateSimpleButton("start", "PLAY");
+        startBtn.fontFamily = "Viga";
         startBtn.width = 0.2
         startBtn.height = "40px";
         startBtn.color = "white";
         startBtn.top = "-14px";
         startBtn.thickness = 0;
         startBtn.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-        guiMenu.addControl(startBtn);
+        imageRect.addControl(startBtn);
+
+        //set up transition effect : modified version of https://www.babylonjs-playground.com/#2FGYE8#0
+        Effect.RegisterShader("fade",
+            "precision highp float;" +
+            "varying vec2 vUV;" +
+            "uniform sampler2D textureSampler; " +
+            "uniform float fadeLevel; " +
+            "void main(void){" +
+            "vec4 baseColor = texture2D(textureSampler, vUV) * fadeLevel;" +
+            "baseColor.a = 1.0;" +
+            "gl_FragColor = baseColor;" +
+            "}");
+
+        let fadeLevel = 1.0;
+        this._transition = false;
+        scene.registerBeforeRender(() => {
+            if (this._transition) {
+                fadeLevel -= .05;
+                if(fadeLevel <= 0){
+                    this._goToCutScene();
+                    this._transition = false;
+                }
+            }
+
+            // //once the fade transition has complete, switch scenes
+            // if(this._ui.fadeLevel <= 0) {
+            //     this._ui.quit = true;
+            //     this._ui.transition = false;
+            // }
+        })
 
         //this handles interactions with the start button attached to the scene
         startBtn.onPointerDownObservable.add(() => {
-            this._goToCutScene();
+            //fade screen
+            const postProcess = new PostProcess("Fade", "fade", ["fadeLevel"], null, 1.0, camera);
+            postProcess.onApply = (effect) => {
+                effect.setFloat("fadeLevel", fadeLevel);
+            };
+            this._transition = true;
+            //sounds
+            sfx.play();
+
             scene.detachControl(); //observables disabled
         });
 
@@ -442,6 +513,8 @@ class App {
         let scene = new Scene(this._engine);
         this._gamescene = scene;
         
+
+        this._loadSounds(scene);
         //--CREATE ENVIRONMENT--
         const environment = new Environment(scene);
         this._environment = environment;
@@ -514,16 +587,34 @@ class App {
         scene.onBeforeRenderObservable.add(() => {
             //reset the sparkler timer
             if (this._player.sparkReset) {
-                this._ui.startSparklerTimer();
+                this._ui.startSparklerTimer(this._player.sparkler);
                 this._player.sparkReset = false;
-
                 this._ui.updateLanternCount(this._player.lanternsLit);
             }
             //stop the sparkler timer after 20 seconds
             else if (this._ui.stopSpark && this._player.sparkLit) {
-                this._ui.stopSparklerTimer();
+                this._ui.stopSparklerTimer(this._player.sparkler);
                 this._player.sparkLit = false;
             }
+
+            //if you've reached the destination and lit all the lanterns
+            if (this._player.win && this._player.lanternsLit >= 2) {
+                this._ui.gamePaused = true; //stop the timer so that fireworks can play and player cant move around
+                //dont allow pause menu interaction
+                this._ui.pauseBtn.isHitTestVisible = false;
+
+                let i = 10; //10 seconds
+                window.setInterval(() => {
+                    i--;
+                    if (i == 0) {
+                        this._showWin();
+                    }
+                }, 1000);
+
+                this._environment._startFireworks = true;
+                this._player.win = false;
+            }
+
             // when the game isn't paused, update the timer
             if (!this._ui.gamePaused) {
                 this._ui.updateHud();
@@ -568,7 +659,7 @@ class App {
         scene.getMeshByName("outer").position = scene.getTransformNodeByName("startPosition").getAbsolutePosition(); //move the player to the start position
         //set up the game timer and sparkler timer -- linked to the ui
         this._ui.startTimer();
-        this._ui.startSparklerTimer();
+        this._ui.startSparklerTimer(this._player.sparkler);
         
         //get rid of start scene, switch to gamescene and change states
         this._scene.dispose();
@@ -577,8 +668,128 @@ class App {
         this._engine.hideLoadingUI();
         //the game is ready, attach control back
         this._scene.attachControl();
-    }
 
+        //--SOUNDS--
+        this.game.play(); // play the gamesong
+    }
+    private _showWin(): void {
+
+        //stop game sound and play end song
+        this.game.dispose();
+        this.end.play();
+        this._player.onRun.clear();
+
+        const winUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
+        winUI.idealHeight = 720;
+
+        const rect = new Rectangle();
+        rect.thickness = 0;
+        rect.background = "black";
+        rect.alpha = 0.4;
+        rect.width = 0.4;
+        winUI.addControl(rect);
+
+        const stackPanel = new StackPanel("credits");
+        stackPanel.width = 0.4;
+        stackPanel.fontFamily = "Viga";
+        stackPanel.fontSize = "16px";
+        stackPanel.color = "white";
+        winUI.addControl(stackPanel);
+
+        const wincreds = new TextBlock("special");
+        wincreds.resizeToFit = true;
+        wincreds.color = "white";
+        wincreds.text = "Special thanks to the Babylon Team!";
+        wincreds.textWrapping = true;
+        wincreds.height = "24px";
+        wincreds.width = "100%";
+        wincreds.fontFamily = "Viga";
+        stackPanel.addControl(wincreds);
+
+        //Credits for music & SFX
+        const music = new TextBlock("music", "Music");
+        music.fontSize = 22;
+        music.resizeToFit = true;
+        music.textWrapping = true;
+        
+        const source = new TextBlock("sources", "Sources: freesound.org, opengameart.org, and itch.io")
+        source.textWrapping = true;
+        source.resizeToFit = true;
+
+        const jumpCred = new TextBlock("jumpCred", "jump2 by LloydEvans09 - freesound.org");
+        jumpCred.textWrapping = true;
+        jumpCred.resizeToFit = true;
+
+        const walkCred = new TextBlock("walkCred", "Concrete 2 by MayaSama @mayasama.itch.io / ig: @mayaragandra");
+        walkCred.textWrapping = true;
+        walkCred.resizeToFit = true;
+
+        const gameCred = new TextBlock("gameSong", "Christmas synths by 3xBlast - opengameart.org"); 
+        gameCred.textWrapping = true;
+        gameCred.resizeToFit = true;
+
+        const pauseCred = new TextBlock("pauseSong", "Music by Matthew Pablo / www.matthewpablo.com - opengameart.org");
+        pauseCred.textWrapping = true;
+        pauseCred.resizeToFit = true;
+
+        const endCred = new TextBlock("startendSong", "copycat by syncopika - opengameart.org");
+        endCred.textWrapping = true;
+        endCred.resizeToFit = true;
+
+        const loseCred = new TextBlock("loseSong", "Eye of the Storm by Joth - opengameart.org");
+        loseCred.textWrapping = true;
+        loseCred.resizeToFit = true;
+
+        const fireworksSfx = new TextBlock("fireworks", "rubberduck - opengameart.org")
+        fireworksSfx.textWrapping = true;
+        fireworksSfx.resizeToFit = true;
+
+        const dashCred = new TextBlock("dashCred", "Woosh Noise 1 by potentjello - freesound.org");
+        dashCred.textWrapping = true;
+        dashCred.resizeToFit = true;
+
+        //quit, sparkwarning, reset
+        const sfxCred = new TextBlock("sfxCred", "200 Free SFX - https://kronbits.itch.io/freesfx");
+        sfxCred.textWrapping = true;
+        sfxCred.resizeToFit = true;
+
+        //lighting lantern, sparkreset
+        const sfxCred2 = new TextBlock("sfxCred2", "sound pack by wobbleboxx.com - opengameart.org");
+        sfxCred2.textWrapping = true;
+        sfxCred2.resizeToFit = true;
+
+        const selectionSfxCred = new TextBlock("select", "8bit menu select by Fupi - opengameart.org");
+        selectionSfxCred.textWrapping = true;
+        selectionSfxCred.resizeToFit = true;
+
+        stackPanel.addControl(music);
+        stackPanel.addControl(source);
+        stackPanel.addControl(jumpCred);
+        stackPanel.addControl(walkCred);
+        stackPanel.addControl(gameCred);
+        stackPanel.addControl(pauseCred);
+        stackPanel.addControl(endCred);
+        stackPanel.addControl(fireworksSfx);
+        stackPanel.addControl(dashCred);
+        stackPanel.addControl(sfxCred);
+        stackPanel.addControl(sfxCred2);
+        stackPanel.addControl(selectionSfxCred);
+
+        const mainMenu = Button.CreateSimpleButton("mainmenu", "RETURN");
+        mainMenu.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+        mainMenu.fontFamily = "Viga";
+        mainMenu.width = 0.2
+        mainMenu.height = "40px";
+        mainMenu.color = "white";
+        winUI.addControl(mainMenu);
+
+        mainMenu.onPointerDownObservable.add(() => {
+            this._ui.transition = true;
+            this._ui.quitSfx.play();
+            this._goToStart();
+        })
+
+    }
     private async _goToLose(): Promise<void> {
         this._engine.displayLoadingUI();
 
@@ -616,6 +827,20 @@ class App {
         this._scene.dispose();
         this._scene = scene;
         this._state = State.LOSE;
+    }
+    //loading sounds for the game scene
+    private _loadSounds(scene: Scene): void {
+
+        this.game = new Sound("gameSong", "./sounds/Christmassynths.wav", scene, function () {
+        }, {
+            loop:true,
+            volume: 0.1
+        });
+
+        this.end = new Sound("endSong", "./sounds/copycat(revised).mp3", scene, function () {
+        }, {
+            volume: 0.25
+        });
     }
 }
 new App();

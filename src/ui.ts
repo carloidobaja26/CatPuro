@@ -36,6 +36,9 @@ export class Hud {
     private _playerUI;
     private _pauseMenu;
     private _controls;
+    public tutorial;
+    public hint;
+
 
    //Mobile
    public isMobile: boolean;
@@ -46,6 +49,11 @@ export class Hud {
    public upBtn: Button;
    public downBtn: Button;
 
+    //Sounds
+    public quitSfx: Sound;
+    private _sfx: Sound;
+    private _pause: Sound;
+    private _sparkWarningSfx: Sound;
     constructor(scene: Scene) {
 
         this._scene = scene;
@@ -141,29 +149,79 @@ export class Hud {
             //when game is paused, make sure that the next start time is the time it was when paused
             this.gamePaused = true;
             this._prevTime = this.time;
+
+            //--SOUNDS--
+            this._scene.getSoundByName("gameSong").pause();
+            this._pause.play(); //play pause music
         });
+
+
+        //popup tutorials + hint
+        const tutorial = new Rectangle();
+        tutorial.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        tutorial.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        tutorial.top = "12%";
+        tutorial.left = "-1%";
+        tutorial.height = 0.2;
+        tutorial.width = 0.2;
+        tutorial.thickness = 0;
+        tutorial.alpha = 0.6;
+        this._playerUI.addControl(tutorial);
+        this.tutorial = tutorial;
+        //movement image, will disappear once you attempt all of the moves
+        let movementPC = new Image("pause", "sprites/tutorial.jpeg");
+        // tutorial.addControl(movementPC);
+
+        const hint = new Rectangle();
+        hint.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        hint.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        hint.top = "14%";
+        hint.left = "-4%";
+        hint.height = 0.08;
+        hint.width = 0.08;
+        hint.thickness = 0;
+        hint.alpha = 0.6;
+        hint.isVisible = false;
+        this._playerUI.addControl(hint);
+        this.hint = hint;
+        //hint to the first lantern, will disappear once you light it
+        const lanternHint = new Image("lantern1", "sprites/arrowBtn.png");
+        lanternHint.rotation = Math.PI / 2;
+        lanternHint.stretch = Image.STRETCH_UNIFORM;
+        lanternHint.height = 0.8;
+        lanternHint.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        hint.addControl(lanternHint);
+        const moveHint = new TextBlock("move", "Move Right");
+        moveHint.color = "white";
+        moveHint.fontSize = "12px";
+        moveHint.fontFamily = "Viga";
+        moveHint.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+        moveHint.textWrapping = true;
+        moveHint.resizeToFit = true;
+        hint.addControl(moveHint);
 
         this._createPauseMenu();
         this._createControlsMenu();
+        this._loadSounds(scene);
         //Check if Mobile, add button controls
         if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
             this.isMobile = true; // tells inputController to track mobile inputs
 
             //tutorial image
-            // movementPC.isVisible = false;
-            // let movementMobile = new Image("pause", "sprites/tutorialMobile.jpeg");
-            // tutorial.addControl(movementMobile);
-            // //--ACTION BUTTONS--
-            // // container for action buttons (right side of screen)
-            // const actionContainer = new Rectangle();
-            // actionContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-            // actionContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-            // actionContainer.height = 0.4;
-            // actionContainer.width = 0.2;
-            // actionContainer.left = "-2%";
-            // actionContainer.top = "-2%";
-            // actionContainer.thickness = 0;
-            // playerUI.addControl(actionContainer);
+            movementPC.isVisible = false;
+            let movementMobile = new Image("pause", "sprites/tutorialMobile.jpeg");
+            tutorial.addControl(movementMobile);
+            //--ACTION BUTTONS--
+            // container for action buttons (right side of screen)
+            const actionContainer = new Rectangle();
+            actionContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+            actionContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+            actionContainer.height = 0.4;
+            actionContainer.width = 0.2;
+            actionContainer.left = "-2%";
+            actionContainer.top = "-2%";
+            actionContainer.thickness = 0;
+            playerUI.addControl(actionContainer);
 
             //grid for action button placement
             const actionGrid = new Grid();
@@ -171,7 +229,7 @@ export class Hud {
             actionGrid.addColumnDefinition(.5);
             actionGrid.addRowDefinition(.5);
             actionGrid.addRowDefinition(.5);
-            //actionContainer.addControl(actionGrid);
+            actionContainer.addControl(actionGrid);
 
             const dashBtn = Button.CreateImageOnlyButton("dash", "./sprites/aBtn.png");
             dashBtn.thickness = 0;
@@ -287,7 +345,7 @@ export class Hud {
 
     //---- Sparkler Timers ----
     //start and restart sparkler, handles setting the texture and animation frame
-    public startSparklerTimer(): void {
+    public startSparklerTimer(sparkler: ParticleSystem): void {
         //reset the sparkler timers & animation frames
         this.stopSpark = false;
         this._sparklerLife.cellId = 0;
@@ -298,8 +356,14 @@ export class Hud {
         if (this._sparkhandle) {
             clearInterval(this._sparkhandle);
         }
+        //--SOUNDS--
+        this._sparkWarningSfx.stop(); // if you restart the sparkler while this was playing (it technically would never reach cellId==10, so you need to stop the sound)
 
-        this._scene.getLightByName("sparklight").intensity = 35;
+        //reset the sparkler (particle system and light)
+        if (sparkler != null) {
+            sparkler.start();
+            this._scene.getLightByName("sparklight").intensity = 35;
+        }
 
         //sparkler animation, every 2 seconds update for 10 bars of sparklife
         this._handle = setInterval(() => {
@@ -307,11 +371,18 @@ export class Hud {
                 if (this._sparklerLife.cellId < 10) {
                     this._sparklerLife.cellId++;
                 }
+                if (this._sparklerLife.cellId == 9) {
+                    this._sparkWarningSfx.play();
+
+                }
                 if (this._sparklerLife.cellId == 10) {
                     this.stopSpark = true;
                     clearInterval(this._handle);
-                    
+                    //sfx
+                    this._sparkWarningSfx.stop();
                 }
+            } else { // if the game is paused, also pause the warning SFX
+                this._sparkWarningSfx.pause();
             }
         }, 2000);
 
@@ -331,9 +402,13 @@ export class Hud {
     }
 
     //stop the sparkler, resets the texture
-    public stopSparklerTimer(): void {
+    public stopSparklerTimer(sparkler: ParticleSystem): void {
         this.stopSpark = true;
-        this._scene.getLightByName("sparklight").intensity = 0;
+
+        if (sparkler != null) {
+            sparkler.stop();
+            this._scene.getLightByName("sparklight").intensity = 0;
+        }
     }
 
     //---- Pause Menu Popup ----
@@ -381,6 +456,16 @@ export class Hud {
             //game unpaused, our time is now reset
             this.gamePaused = false;
             this._startTime = new Date().getTime();
+
+            //--SOUNDS--
+            this._scene.getSoundByName("gameSong").play();
+            this._pause.stop();
+
+            if(this._sparkWarningSfx.isPaused) {
+                this._sparkWarningSfx.play();
+            }
+            this._sfx.play(); //play transition sound
+
         });
 
         const controlsBtn = Button.CreateSimpleButton("controls", "CONTROLS");
@@ -402,6 +487,9 @@ export class Hud {
             //open controls screen
             this._controls.isVisible = true;
             this._pauseMenu.isVisible = false;
+
+            //play transition sound
+            this._sfx.play();
         });
 
         const quitBtn = Button.CreateSimpleButton("quit", "QUIT");
@@ -436,6 +524,13 @@ export class Hud {
                 effect.setFloat("fadeLevel", this.fadeLevel);
             };
             this.transition = true;
+            this.quit = true;
+            //--SOUNDS--
+            this.quitSfx.play();
+            if(this._pause.isPlaying){
+                this._pause.stop();
+            }
+
         })
     }
 
@@ -477,7 +572,29 @@ export class Hud {
         backBtn.onPointerDownObservable.add(() => {
             this._pauseMenu.isVisible = true;
             this._controls.isVisible = false;
+            //play transition sound
+            this._sfx.play();
+
         });
     }
+    //load all sounds needed for game ui interactions
+    private _loadSounds(scene: Scene): void {
+        this._pause = new Sound("pauseSong", "./sounds/Snowland.wav", scene, function () {
+        }, {
+            volume: 0.2
+        });
 
+        this._sfx = new Sound("selection", "./sounds/vgmenuselect.wav", scene, function () {
+        });
+
+        this.quitSfx = new Sound("quit", "./sounds/Retro Event UI 13.wav", scene, function () {
+        });
+
+        this._sparkWarningSfx = new Sound("sparkWarning", "./sounds/Retro Water Drop 01.wav", scene, function () {
+        }, {
+            loop: true,
+            volume: 0.5,
+            playbackRate: 0.6
+        });
+    }
 }

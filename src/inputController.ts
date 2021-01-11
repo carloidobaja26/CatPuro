@@ -48,24 +48,28 @@ export class PlayerInput {
 
         // Set up Mobile Controls if on mobile device
         if (this._ui.isMobile) {
-            //this._setUpMobile();
+            this._setUpMobile();
         }
     }
     private _updateFromKeyboard(): void {
-        if (this.inputMap["ArrowUp"]) {
+        if ((this.inputMap["ArrowUp"]|| this.mobileUp) && !this._ui.gamePaused) {
             this.vertical = Scalar.Lerp(this.vertical, 1, 0.2);
             this.verticalAxis = 1;
-        } else if (this.inputMap["ArrowDown"]) {
+        } else if ((this.inputMap["ArrowDown"] || this.mobileDown) && !this._ui.gamePaused) {
             this.vertical = Scalar.Lerp(this.vertical, -1, 0.2);
             this.verticalAxis = -1;
         } else {
             this.vertical = 0;
             this.verticalAxis = 0;
         }
-        if (this.inputMap["ArrowLeft"]) {
+
+        //left - right movement
+        if ((this.inputMap["ArrowLeft"] || this.mobileLeft) && !this._ui.gamePaused) {
+            //lerp will create a scalar linearly interpolated amt between start and end scalar
+            //taking current horizontal and how long you hold, will go up to -1(all the way left)
             this.horizontal = Scalar.Lerp(this.horizontal, -1, 0.2);
             this.horizontalAxis = -1;
-        } else if (this.inputMap["ArrowRight"]) {
+        } else if ((this.inputMap["ArrowRight"] || this.mobileRight) && !this._ui.gamePaused) {
             this.horizontal = Scalar.Lerp(this.horizontal, 1, 0.2);
             this.horizontalAxis = 1;
         }
@@ -76,19 +80,67 @@ export class PlayerInput {
         }
 
         //dash
-        if (this.inputMap["Shift"]) {
+        if ((this.inputMap["Shift"] || this._mobileDash) && !this._ui.gamePaused) {
             this.dashing = true;
             //alert("dash");
         } else {
             this.dashing = false;
         }
         //Jump Checks (SPACE)
-        if (this.inputMap[" "]) {
+        if ((this.inputMap[" "] || this._mobileJump) && !this._ui.gamePaused) {
             this.jumpKeyDown = true;
         } else {
             this.jumpKeyDown = false;
         }
     }
+    // Mobile controls
+    private _setUpMobile(): void {
+        //Jump Button
+        this._ui.jumpBtn.onPointerDownObservable.add(() => {
+            this._mobileJump = true;
+        });
+        this._ui.jumpBtn.onPointerUpObservable.add(() => {
+            this._mobileJump = false;
+        });
 
+        //Dash Button
+        this._ui.dashBtn.onPointerDownObservable.add(() => {
+            this._mobileDash = true;
+        });
+        this._ui.dashBtn.onPointerUpObservable.add(() => {
+            this._mobileDash = false;
+        });
+
+        //Arrow Keys
+        this._ui.leftBtn.onPointerDownObservable.add(() => {
+            this.mobileLeft = true;
+        });
+        this._ui.leftBtn.onPointerUpObservable.add(() => {
+            this.mobileLeft = false;
+        });
+
+        this._ui.rightBtn.onPointerDownObservable.add(() => {
+            this.mobileRight = true;
+        });
+        this._ui.rightBtn.onPointerUpObservable.add(() => {
+            this.mobileRight = false;
+        });
+
+        this._ui.upBtn.onPointerDownObservable.add(() => {
+            this.mobileUp = true;
+        });
+        this._ui.upBtn.onPointerUpObservable.add(() => {
+            this.mobileUp = false;
+        });
+
+        this._ui.downBtn.onPointerDownObservable.add(() => {
+            this.mobileDown = true;
+        });
+        this._ui.downBtn.onPointerUpObservable.add(() => {
+            this.mobileDown = false;
+        });
+
+
+    }
 
 }

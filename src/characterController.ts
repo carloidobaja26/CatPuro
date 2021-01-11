@@ -14,6 +14,19 @@ export class Player extends TransformNode {
     private _camRoot: TransformNode;
     private _yTilt: TransformNode;
 
+    //animations
+    private _run: AnimationGroup;
+    private _idle: AnimationGroup;
+    private _jump: AnimationGroup;
+    private _land: AnimationGroup;
+    private _dash: AnimationGroup;
+
+    // animation trackers
+    private _currentAnim: AnimationGroup = null;
+    private _prevAnim: AnimationGroup;
+    private _isFalling: boolean = false;
+    private _jumped: boolean = false;
+
     //const values
     private static readonly PLAYER_SPEED: number = 0.45;
     private static readonly JUMP_FORCE: number = 1.80;
@@ -55,12 +68,36 @@ export class Player extends TransformNode {
     public sparkLit: boolean = true;
     public sparkReset: boolean = false;
 
-    constructor(assets, scene: Scene, shadowGenerator: ShadowGenerator, input?) {
+    //moving platforms
+    public _raisePlatform: boolean;
+
+    //sfx
+    public lightSfx: Sound;
+    public sparkResetSfx: Sound;
+    private _resetSfx: Sound;
+    private _walkingSfx: Sound;
+    private _jumpingSfx: Sound;
+    private _dashingSfx: Sound;
+
+    //observables
+    public onRun = new Observable();
+
+    constructor(assets, scene: Scene, shadowGenerator: ShadowGenerator, input?: PlayerInput) {
         super("player", scene);
         this.scene = scene;
+
+
+        //camera
         this._setupPlayerCamera();
         this.mesh = assets.mesh;
         this.mesh.parent = this;
+
+
+        this._idle = assets.animationGroups[1];
+        this._jump = assets.animationGroups[2];
+        this._land = assets.animationGroups[3];
+        this._run = assets.animationGroups[4];
+        this._dash = assets.animationGroups[0];
 
         //--COLLISIONS--
         this.mesh.actionManager = new ActionManager(this.scene);
@@ -72,7 +109,7 @@ export class Player extends TransformNode {
                     parameter: this.scene.getMeshByName("destination")
                 },
                 () => {
-                    if(this.lanternsLit == 22){
+                    if(this.lanternsLit >= 2){
                         this.win = true;
                         //tilt camera to look at where the fireworks will be displayed
                         this._yTilt.rotation = new Vector3(5.689773361501514, 0.23736477827122882, 0);
@@ -91,10 +128,27 @@ export class Player extends TransformNode {
             },
                 () => {
                     this.mesh.position.copyFrom(this._lastGroundPos); // need to use copy or else they will be both pointing at the same thing & update together
+
+                    //--SOUNDS--
+                    //this._resetSfx.play();                  
                 }
             )
         );
+
+        //--SOUNDS--
+        //observable for when to play the walking sfx
+        // this.onRun.add((play) => {
+        //     if (play && !this._walkingSfx.isPlaying) {
+        //         this._walkingSfx.play();
+        //     } else if (!play && this._walkingSfx.isPlaying) {
+        //         this._walkingSfx.stop();
+        //         this._walkingSfx.isPlaying = true; // make sure that walkingsfx.stop is called only once
+        //     }
+        // })
+
+        this._createSparkles(); //create the sparkler particle system
         shadowGenerator.addShadowCaster(assets.mesh); //the player mesh will cast shadows
+        this._setUpAnimations();
         this._input = input; //inputs we will get from inputController.ts
 
     }
@@ -109,6 +163,11 @@ export class Player extends TransformNode {
         if (this._input.dashing && !this._dashPressed && this._canDash /*&& !this._grounded*/) {
             this._canDash = false; //we've started a dash, do not allow another
             this._dashPressed = true; //start the dash sequence
+
+            //sfx and animations
+            this._currentAnim = this._dash;
+            //this._dashingSfx.play();
+
         }
 
         let dashFactor = 1;
@@ -132,7 +191,7 @@ export class Player extends TransformNode {
         //movement based off of camera's view
         let move = correctedHorizontal.addInPlace(correctedVertical);
 
-                //clear y so that the character doesnt fly up, normalize for next step, taking into account whether we've DASHED or not
+        //clear y so that the character doesnt fly up, normalize for next step, taking into account whether we've DASHED or not
         this._moveDirection = new Vector3((move).normalize().x * dashFactor, 0, (move).normalize().z * dashFactor);
 
         //clamp the input value so that diagonal movement isn't twice as fast
@@ -159,6 +218,48 @@ export class Player extends TransformNode {
         angle += this._camRoot.rotation.y;
         let targ = Quaternion.FromEulerAngles(0, angle, 0);
         this.mesh.rotationQuaternion = Quaternion.Slerp(this.mesh.rotationQuaternion, targ, 10 * this._deltaTime);
+
+    }
+
+
+    private _setUpAnimations(): void {
+
+        this.scene.stopAllAnimations();
+        this._run.loopAnimation = true;
+        this._idle.loopAnimation = true;
+
+        //initialize current and previous
+        this._currentAnim = this._idle;
+        this._prevAnim = this._land;
+    }
+
+    private _animatePlayer(): void {
+        if (!this._dashPressed && !this._isFalling && !this._jumped 
+            && (this._input.inputMap["ArrowUp"] || this._input.mobileUp
+            || this._input.inputMap["ArrowDown"] || this._input.mobileDown
+            || this._input.inputMap["ArrowLeft"] || this._input.mobileLeft
+            || this._input.inputMap["ArrowRight"] || this._input.mobileRight)) {
+
+            this._currentAnim = this._run;
+            //this.onRun.notifyObservers(true);
+        } else if (this._jumped && !this._isFalling && !this._dashPressed) {
+            this._currentAnim = this._jump;
+        } else if (!this._isFalling && this._grounded) {
+            this._currentAnim = this._idle;
+            //only notify observer if it's playing
+            // if(this.scene.getSoundByName("walking").isPlaying){
+            //     this.onRun.notifyObservers(false);
+            // }
+        } else if (this._isFalling) {
+            this._currentAnim = this._land;
+        }
+
+        //Animations
+        if(this._currentAnim != null && this._prevAnim !== this._currentAnim){
+            this._prevAnim.stop();
+            this._currentAnim.play(this._currentAnim.loopAnimation);
+            this._prevAnim = this._currentAnim;
+        }
 
     }
 
@@ -254,6 +355,13 @@ export class Player extends TransformNode {
         if (this._gravity.y < -Player.JUMP_FORCE) {
             this._gravity.y = -Player.JUMP_FORCE;
         }
+
+        //cue falling animation once gravity starts pushing down
+        if (this._gravity.y < 0 && this._jumped) { //todo: play a falling anim if not grounded BUT not on a slope
+            this._isFalling = true;
+        }
+
+
         this.mesh.moveWithCollisions(this._moveDirection.addInPlace(this._gravity));
 
         if (this._isGrounded()) {
@@ -267,20 +375,33 @@ export class Player extends TransformNode {
             //reset sequence(needed if we collide with the ground BEFORE actually completing the dash duration)
             this.dashTime = 0;
             this._dashPressed = false; 
+
+            //jump & falling animation flags
+            this._jumped = false;
+            this._isFalling = false;
+
         }
 
         //Jump detection
         if (this._input.jumpKeyDown && this._jumpCount > 0) {
             this._gravity.y = Player.JUMP_FORCE;
             this._jumpCount--;
+
+            //jumping and falling animation flags
+            this._jumped = true;
+            this._isFalling = false;
+            //this._jumpingSfx.play();
+
+        
         }
     }
-
+    //--GAME UPDATES--
     private _beforeRenderUpdate(): void {
         this._updateFromControls();
         //move our mesh
         //this.mesh.moveWithCollisions(this._moveDirection);
         this._updateGroundDetection();
+        this._animatePlayer();
     }
 
 
@@ -347,6 +468,43 @@ export class Player extends TransformNode {
         return this.camera;
     }
    
+    private _createSparkles(): void {
 
+        const sphere = Mesh.CreateSphere("sparkles", 4, 1, this.scene);
+        sphere.position = new Vector3(0, 0, 0);
+        sphere.parent = this.scene.getTransformNodeByName("Empty"); // place particle system at the tip of the sparkler on the player mesh
+        sphere.isVisible = false;
+
+        let particleSystem = new ParticleSystem("sparkles", 1000, this.scene);
+        particleSystem.particleTexture = new Texture("textures/flwr.png", this.scene);
+        particleSystem.emitter = sphere;
+        particleSystem.particleEmitterType = new SphereParticleEmitter(0);
+
+        particleSystem.updateSpeed = 0.014;
+        particleSystem.minAngularSpeed = 0;
+        particleSystem.maxAngularSpeed = 360;
+        particleSystem.minEmitPower = 1;
+        particleSystem.maxEmitPower = 3;
+
+        particleSystem.minSize = 0.5;
+        particleSystem.maxSize = 2;
+        particleSystem.minScaleX = 0.5;
+        particleSystem.minScaleY = 0.5;
+        particleSystem.color1 = new Color4(0.8, 0.8549019607843137, 1, 1);
+        particleSystem.color2 = new Color4(0.8509803921568627, 0.7647058823529411, 1, 1);
+
+        particleSystem.addRampGradient(0, Color3.White());
+        particleSystem.addRampGradient(1, Color3.Black());
+        particleSystem.getRampGradients()[0].color = Color3.FromHexString("#BBC1FF");
+        particleSystem.getRampGradients()[1].color = Color3.FromHexString("#FFFFFF");
+        particleSystem.maxAngularSpeed = 0;
+        particleSystem.maxInitialRotation = 360;
+        particleSystem.minAngularSpeed = -10;
+        particleSystem.maxAngularSpeed = 10;
+
+        particleSystem.start();
+
+        this.sparkler = particleSystem;
+    }
     
 }
