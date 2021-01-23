@@ -7,6 +7,7 @@ import { Environment } from "./environment";
 import { Player } from "./characterController";
 import { PlayerInput } from "./inputController";
 import { Hud } from "./ui";
+import {SoundEffect} from "./musicEffect";
 enum State { START = 0, GAME = 1, LOSE = 2, CUTSCENE = 3 }
 
 class App {
@@ -35,6 +36,7 @@ class App {
     //post process
     private _transition: boolean = false;
 
+    private _musicEffect: SoundEffect;
     constructor() {
         this._canvas = this._createCanvas();
 
@@ -131,18 +133,13 @@ class App {
         let camera = new FreeCamera("camera1", new Vector3(0, 0, 0), scene);
         camera.setTarget(Vector3.Zero());
 
-        //--SOUNDS--
-        const start = new Sound("startSong", "./sounds/copycat(revised).mp3", scene, function () {
-        }, {
-            volume: 0.25,
-            loop: true,
-            autoplay: true
-        });
-        const sfx = new Sound("selection", "./sounds/vgmenuselect.wav", scene, function () {
-        });
 
-
-        //--GUI--
+        this._musicEffect = new SoundEffect(scene);
+        this._musicEffect._endMusic(scene);
+        scene.getSoundByName("endSong").play();
+        scene.getSoundByName("endSong").autoplay = true;
+        scene.getSoundByName("endSong").loop = true;
+    
         const guiMenu = AdvancedDynamicTexture.CreateFullscreenUI("UI");
         guiMenu.idealHeight = 720;
 
@@ -205,7 +202,7 @@ class App {
             //     this._ui.transition = false;
             // }
         })
-
+        this._musicEffect._sfxSound(scene);
         //this handles interactions with the start button attached to the scene
         startBtn.onPointerDownObservable.add(() => {
             //fade screen
@@ -215,8 +212,8 @@ class App {
             };
             this._transition = true;
             //sounds
-            sfx.play();
-
+           // sfx.play();
+            this._scene.getSoundByName("selection").play();
             scene.detachControl(); //observables disabled
         });
 
@@ -513,8 +510,10 @@ class App {
         let scene = new Scene(this._engine);
         this._gamescene = scene;
         
+        this._musicEffect = new SoundEffect(scene);
 
-        this._loadSounds(scene);
+        this._musicEffect._endMusic(scene);
+        this._musicEffect._gameMusic(scene);
         //--CREATE ENVIRONMENT--
         const environment = new Environment(scene);
         this._environment = environment;
@@ -670,13 +669,16 @@ class App {
         this._scene.attachControl();
 
         //--SOUNDS--
-        this.game.play(); // play the gamesong
+        //this.game.play(); // play the gamesong
+        this._scene.getSoundByName("gameSong").play();
     }
     private _showWin(): void {
 
         //stop game sound and play end song
-        this.game.dispose();
-        this.end.play();
+        //this.game.dispose();
+        this._scene.getSoundByName("gameSong").dispose();
+        this._scene.getSoundByName("endSong").play();
+        //this.end.play();
         this._player.onRun.clear();
 
         const winUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
@@ -783,9 +785,12 @@ class App {
         mainMenu.color = "white";
         winUI.addControl(mainMenu);
 
+        this._musicEffect._quitSound(this._scene);
+
         mainMenu.onPointerDownObservable.add(() => {
             this._ui.transition = true;
-            this._ui.quitSfx.play();
+            this._scene.getSoundByName("quit").play();
+            //this._ui.quitSfx.play();
             this._goToStart();
         })
 
@@ -828,19 +833,6 @@ class App {
         this._scene = scene;
         this._state = State.LOSE;
     }
-    //loading sounds for the game scene
-    private _loadSounds(scene: Scene): void {
 
-        this.game = new Sound("gameSong", "./sounds/Christmassynths.wav", scene, function () {
-        }, {
-            loop:true,
-            volume: 0.1
-        });
-
-        this.end = new Sound("endSong", "./sounds/copycat(revised).mp3", scene, function () {
-        }, {
-            volume: 0.25
-        });
-    }
 }
 new App();

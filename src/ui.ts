@@ -1,5 +1,6 @@
 import { TextBlock, StackPanel, AdvancedDynamicTexture, Image, Button, Rectangle, Control, Grid } from "@babylonjs/gui";
 import { Scene, Sound, ParticleSystem, PostProcess, Effect, SceneSerializer } from "@babylonjs/core";
+import { SoundEffect } from './musicEffect';
 
 export class Hud {
     private _scene: Scene;
@@ -54,10 +55,13 @@ export class Hud {
     private _sfx: Sound;
     private _pause: Sound;
     private _sparkWarningSfx: Sound;
+
+    private _musicEffect: SoundEffect;
+    private _gamescene: Scene;
     constructor(scene: Scene) {
 
         this._scene = scene;
-
+        this._musicEffect = new SoundEffect(scene);
         const playerUI = AdvancedDynamicTexture.CreateFullscreenUI("UI");
         this._playerUI = playerUI;
         this._playerUI.idealHeight = 720;
@@ -130,6 +134,7 @@ export class Hud {
         playerUI.addControl(spark);
         this._spark = spark;
 
+        
         const pauseBtn = Button.CreateImageOnlyButton("pauseBtn", "./sprites/pauseBtn.png");
         pauseBtn.width = "48px";
         pauseBtn.height = "86px";
@@ -140,6 +145,13 @@ export class Hud {
         playerUI.addControl(pauseBtn);
         pauseBtn.zIndex = 10;
         this.pauseBtn = pauseBtn;
+
+
+        this._musicEffect._pauseSound(this._scene);
+        this._musicEffect._gameMusic(this._scene);
+        this._musicEffect._sfxSound(this._scene);
+        this._musicEffect._quitSound(this._scene);
+        this._musicEffect._warningSpark(this._scene);
         //when the button is down, make pause menu visable and add control to it
         pauseBtn.onPointerDownObservable.add(() => {
             this._pauseMenu.isVisible = true;
@@ -152,7 +164,9 @@ export class Hud {
 
             //--SOUNDS--
             this._scene.getSoundByName("gameSong").pause();
-            this._pause.play(); //play pause music
+            this._scene.getSoundByName("pauseSong").play();
+            //this._musicEffect._pauseSound(this._scene);
+            //this._pause.play(); //play pause music
         });
 
 
@@ -202,7 +216,8 @@ export class Hud {
 
         this._createPauseMenu();
         this._createControlsMenu();
-        this._loadSounds(scene);
+        
+       // this._musicEffect._pauseSound(scene);
         //Check if Mobile, add button controls
         if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
             this.isMobile = true; // tells inputController to track mobile inputs
@@ -357,8 +372,8 @@ export class Hud {
             clearInterval(this._sparkhandle);
         }
         //--SOUNDS--
-        this._sparkWarningSfx.stop(); // if you restart the sparkler while this was playing (it technically would never reach cellId==10, so you need to stop the sound)
-
+         
+        this._scene.getSoundByName("sparkWarning").stop(); // if you restart the sparkler while this was playing (it technically would never reach cellId==10, so you need to stop the sound)
         //reset the sparkler (particle system and light)
         if (sparkler != null) {
             sparkler.start();
@@ -372,17 +387,16 @@ export class Hud {
                     this._sparklerLife.cellId++;
                 }
                 if (this._sparklerLife.cellId == 9) {
-                    this._sparkWarningSfx.play();
-
+                    this._scene.getSoundByName("sparkWarning").play();
                 }
                 if (this._sparklerLife.cellId == 10) {
                     this.stopSpark = true;
                     clearInterval(this._handle);
                     //sfx
-                    this._sparkWarningSfx.stop();
+                    this._scene.getSoundByName("sparkWarning").stop();
                 }
-            } else { // if the game is paused, also pause the warning SFX
-                this._sparkWarningSfx.pause();
+            } else { // if the game is paused, also pause the warning SFX           
+                this._scene.getSoundByName("sparkWarning").pause();
             }
         }, 2000);
 
@@ -413,8 +427,9 @@ export class Hud {
 
     //---- Pause Menu Popup ----
     private _createPauseMenu(): void {
+        
         this.gamePaused = false;
-
+        
         const pauseMenu = new Rectangle();
         pauseMenu.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
         pauseMenu.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
@@ -459,13 +474,15 @@ export class Hud {
 
             //--SOUNDS--
             this._scene.getSoundByName("gameSong").play();
-            this._pause.stop();
+            this._scene.getSoundByName("pauseSong").stop();
+           // this._pause.stop();
 
-            if(this._sparkWarningSfx.isPaused) {
-                this._sparkWarningSfx.play();
+            if(this._scene.getSoundByName("sparkWarning").isPaused) {
+               
+                this._scene.getSoundByName("sparkWarning").play();
             }
-            this._sfx.play(); //play transition sound
-
+            //this._sfx.play(); //play transition sound
+            this._scene.getSoundByName("selection").play();
         });
 
         const controlsBtn = Button.CreateSimpleButton("controls", "CONTROLS");
@@ -489,7 +506,8 @@ export class Hud {
             this._pauseMenu.isVisible = false;
 
             //play transition sound
-            this._sfx.play();
+            // this._sfx.play();
+            this._scene.getSoundByName("selection").play();
         });
 
         const quitBtn = Button.CreateSimpleButton("quit", "QUIT");
@@ -526,9 +544,9 @@ export class Hud {
             this.transition = true;
             this.quit = true;
             //--SOUNDS--
-            this.quitSfx.play();
-            if(this._pause.isPlaying){
-                this._pause.stop();
+            this._scene.getSoundByName("quit").play();
+            if(this._scene.getSoundByName("pauseSong").isPlaying){
+                this._scene.getSoundByName("pauseSong").stop();
             }
 
         })
@@ -573,28 +591,9 @@ export class Hud {
             this._pauseMenu.isVisible = true;
             this._controls.isVisible = false;
             //play transition sound
-            this._sfx.play();
+            // this._sfx.play();
+            this._scene.getSoundByName("selection").play();
 
-        });
-    }
-    //load all sounds needed for game ui interactions
-    private _loadSounds(scene: Scene): void {
-        this._pause = new Sound("pauseSong", "./sounds/Snowland.wav", scene, function () {
-        }, {
-            volume: 0.2
-        });
-
-        this._sfx = new Sound("selection", "./sounds/vgmenuselect.wav", scene, function () {
-        });
-
-        this.quitSfx = new Sound("quit", "./sounds/Retro Event UI 13.wav", scene, function () {
-        });
-
-        this._sparkWarningSfx = new Sound("sparkWarning", "./sounds/Retro Water Drop 01.wav", scene, function () {
-        }, {
-            loop: true,
-            volume: 0.5,
-            playbackRate: 0.6
         });
     }
 }
